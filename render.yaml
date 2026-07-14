@@ -1,5 +1,19 @@
 services:
   - type: web
+    name: vigron-server
+    env: node
+    plan: free
+    repo: https://github.com/karol212121/vigron-.git
+    branch: main
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    healthCheckPath: /
+    serviceId: red-d9b0qt8js32c73ag8i70
+    envVars:
+      - key: NODE_ENV
+        value: production
+services:
+  - type: web
     name: vigron-code-studio
     env: node
     plan: free
