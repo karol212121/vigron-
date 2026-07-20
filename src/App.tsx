@@ -43,6 +43,7 @@ import { FileTree } from "./components/FileTree";
 import { Terminal } from "./components/Terminal";
 import { AIChat } from "./components/AIChat";
 import { LanguageLogo } from "./components/LanguageLogo";
+import YonPanel from "./komponentlar/YonPanel";
 import { getSuggestions, AutocompleteSuggestion } from "./lib/autocomplete";
 import { highlightCode } from "./lib/highlighter";
 import { db } from "./lib/firebase";
@@ -63,8 +64,8 @@ export default function App() {
     return result;
   };
 
-  // Mobile UI Tabs / Panel state
-  const [activeMobileTab, setActiveMobileTab] = useState<"files" | "editor" | "terminal" | "preview" | "ai">("editor");
+  // Panel state: active view helper alongside the editor
+  const [activePanel, setActivePanel] = useState<"none" | "terminal" | "preview" | "ai">("none");
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
   // Workspace file state
@@ -109,6 +110,7 @@ export default function App() {
 
   // Project Switcher & Projects list states
   const [isProjectModalOpen, setIsProjectModalOpen] = useState(false);
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState("react_tsx");
@@ -176,9 +178,25 @@ export default function App() {
   const [authName, setAuthName] = useState("");
   const [isSignUp, setIsSignUp] = useState(false);
 
-  // Profile & Theme States
-  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  // Theme and Custom Background
   const [editorTheme, setEditorTheme] = useState<string>(() => localStorage.getItem("vigron_editor_theme") || "vscode");
+  const [customBg, setCustomBg] = useState<string | null>(() => localStorage.getItem("vigron_custom_bg"));
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleBgUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const bg = event.target?.result as string;
+        setCustomBg(bg);
+        localStorage.setItem("vigron_custom_bg", bg);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   const [profileNameInput, setProfileNameInput] = useState("");
   const [profileAvatarSeed, setProfileAvatarSeed] = useState("");
   const [profileAvatarStyle, setProfileAvatarStyle] = useState<string>("shapes");
@@ -697,7 +715,7 @@ export default function App() {
     if (existingTab) {
       setActiveTabPath(path);
       setEditorContent(existingTab.content);
-      setActiveMobileTab("editor");
+      setActivePanel("none");
       return;
     }
 
@@ -714,7 +732,7 @@ export default function App() {
         setOpenTabs((prev) => [...prev, newTab]);
         setActiveTabPath(path);
         setEditorContent(data.content);
-        setActiveMobileTab("editor");
+        setActivePanel("none");
       } else {
         // Create tab on failure or simply ignore
         if (path === "README.md") {
@@ -1914,7 +1932,7 @@ salom("Vigron Code");
       prev.map((tab) => (tab.path === activeTabPath ? { ...tab, content: code, isDirty: true } : tab))
     );
     showStatus("AI taklif qilgan kod muharrirga joylandi!", "success");
-    setActiveMobileTab("editor");
+    setActivePanel("none");
   };
 
   const triggerLiveRun = async () => {
@@ -1950,43 +1968,43 @@ salom("Vigron Code");
     const fileNameWithoutExt = extIndex !== -1 ? fileName.substring(0, extIndex) : fileName;
 
     if (ext === "py") {
-      setActiveMobileTab("terminal");
+      setActivePanel("terminal");
       runTerminalCommand(`python3 ${fileName}`, fileDir);
     } else if (ext === "js") {
-      setActiveMobileTab("terminal");
+      setActivePanel("terminal");
       runTerminalCommand(`node ${fileName}`, fileDir);
     } else if (ext === "ts" || ext === "tsx") {
-      setActiveMobileTab("terminal");
+      setActivePanel("terminal");
       runTerminalCommand(`npx tsx ${fileName}`, fileDir);
     } else if (ext === "c") {
-      setActiveMobileTab("terminal");
+      setActivePanel("terminal");
       runTerminalCommand(`gcc -o ${fileNameWithoutExt} ${fileName} && ./${fileNameWithoutExt}`, fileDir);
     } else if (ext === "cpp" || ext === "cc" || ext === "cxx") {
-      setActiveMobileTab("terminal");
+      setActivePanel("terminal");
       runTerminalCommand(`g++ -std=c++17 -o ${fileNameWithoutExt} ${fileName} && ./${fileNameWithoutExt}`, fileDir);
     } else if (ext === "java") {
-      setActiveMobileTab("terminal");
+      setActivePanel("terminal");
       runTerminalCommand(`javac ${fileName} && java ${fileNameWithoutExt}`, fileDir);
     } else if (ext === "go") {
-      setActiveMobileTab("terminal");
+      setActivePanel("terminal");
       runTerminalCommand(`go run ${fileName}`, fileDir);
     } else if (ext === "rs") {
-      setActiveMobileTab("terminal");
+      setActivePanel("terminal");
       runTerminalCommand(`rustc ${fileName} && ./${fileNameWithoutExt}`, fileDir);
     } else if (ext === "php") {
-      setActiveMobileTab("terminal");
+      setActivePanel("terminal");
       runTerminalCommand(`php ${fileName}`, fileDir);
     } else if (ext === "rb") {
-      setActiveMobileTab("terminal");
+      setActivePanel("terminal");
       runTerminalCommand(`ruby ${fileName}`, fileDir);
     } else if (ext === "sh") {
-      setActiveMobileTab("terminal");
+      setActivePanel("terminal");
       runTerminalCommand(`bash ${fileName}`, fileDir);
     } else if (ext === "html") {
       refreshPreview();
-      setActiveMobileTab("preview");
+      setActivePanel("preview");
     } else if (ext === "dart") {
-      setActiveMobileTab("terminal");
+      setActivePanel("terminal");
       const hasPubspec = files.some(f => f.name === "pubspec.yaml");
       if (hasPubspec) {
         runTerminalCommand(`flutter run`, fileDir);
@@ -2069,8 +2087,8 @@ salom("Vigron Code");
       )}
 
       {/* Header / Brand Nav */}
-      <header className="flex flex-col sm:flex-row sm:items-center justify-between px-5 py-3.5 bg-gray-950/70 backdrop-blur-md border-b border-white/5 shrink-0 gap-3 z-50">
-        <div className="flex items-center justify-between">
+      <header className="flex flex-col md:flex-row md:items-center justify-between px-5 py-3.5 bg-gray-950/70 backdrop-blur-md border-b border-white/5 shrink-0 gap-3 z-50">
+        <div className="flex items-center justify-between w-full md:w-auto">
           <div className="flex items-center space-x-3.5">
             <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-indigo-500 via-purple-500 to-pink-500 flex items-center justify-center shadow-lg shadow-indigo-500/30 animate-float">
               <Code2 className="w-5.5 h-5.5 text-white" />
@@ -2082,31 +2100,81 @@ salom("Vigron Code");
               <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">Professional dasturlash muhiti</p>
             </div>
           </div>
-
-          <div className="flex items-center space-x-2 sm:hidden">
-            <button
-              onClick={() => setIsShareModalOpen(true)}
-              className="p-2.5 bg-white/5 hover:bg-white/10 text-cyan-400 rounded-xl border border-white/5 flex items-center transition"
-              title="Mobil Sinxronizatsiya"
-            >
-              <Smartphone className="w-4 h-4" />
-            </button>
-            <button
-              onClick={() => setIsProjectModalOpen(true)}
-              className="p-2.5 bg-white/5 hover:bg-white/10 text-emerald-400 rounded-xl border border-white/5 flex items-center space-x-1 transition"
-              title="Loyiha andozalari"
-            >
-              <Layers className="w-4 h-4" />
-            </button>
-            <button
-              onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="p-2.5 bg-white/5 text-slate-300 rounded-xl border border-white/5 transition"
-            >
-              {sidebarOpen ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
-            </button>
-          </div>
         </div>
 
+        {/* Centralized View & Panel Toggles */}
+        <div className="flex items-center justify-center bg-white/5 p-1 rounded-xl border border-white/5 self-center">
+          <button
+            onClick={() => {
+              setActivePanel("none");
+              setSidebarOpen(false);
+              showStatus("Muharrir to'liq ekranda", "info");
+            }}
+            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all duration-200 active:scale-95 ${
+              activePanel === "none" && !sidebarOpen
+                ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/25"
+                : "text-slate-400 hover:text-slate-200 hover:bg-white/5"
+            }`}
+            title="Kodni yozish maydoni (To'liq ekran)"
+          >
+            <FileCode className="w-3.5 h-3.5" />
+            <span className="hidden xs:inline">Kod</span>
+          </button>
+
+          <button
+            onClick={() => setSidebarOpen(!sidebarOpen)}
+            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all duration-200 active:scale-95 ${
+              sidebarOpen
+                ? "bg-emerald-600 text-white shadow-lg shadow-emerald-500/25"
+                : "text-slate-400 hover:text-slate-200 hover:bg-white/5"
+            }`}
+            title="Fayl Explorer paneli"
+          >
+            <FolderTree className="w-3.5 h-3.5" />
+            <span className="hidden xs:inline">Fayl</span>
+          </button>
+
+          <button
+            onClick={() => setActivePanel(activePanel === "terminal" ? "none" : "terminal")}
+            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all duration-200 active:scale-95 ${
+              activePanel === "terminal"
+                ? "bg-sky-600 text-white shadow-lg shadow-sky-500/25"
+                : "text-slate-400 hover:text-slate-200 hover:bg-white/5"
+            }`}
+            title="Terminal oynasi"
+          >
+            <TerminalIcon className="w-3.5 h-3.5" />
+            <span className="hidden xs:inline">Term</span>
+          </button>
+
+          <button
+            onClick={() => setActivePanel(activePanel === "preview" ? "none" : "preview")}
+            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all duration-200 active:scale-95 ${
+              activePanel === "preview"
+                ? "bg-teal-600 text-white shadow-lg shadow-teal-500/25"
+                : "text-slate-400 hover:text-slate-200 hover:bg-white/5"
+            }`}
+            title="Jonli natija (Preview)"
+          >
+            <Eye className="w-3.5 h-3.5" />
+            <span className="hidden xs:inline">View</span>
+          </button>
+
+          <button
+            onClick={() => setActivePanel(activePanel === "ai" ? "none" : "ai")}
+            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all duration-200 active:scale-95 ${
+              activePanel === "ai"
+                ? "bg-purple-600 text-white shadow-lg shadow-purple-500/25"
+                : "text-slate-400 hover:text-slate-200 hover:bg-white/5"
+            }`}
+            title="Gemini AI yordamchi chat"
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            <span className="hidden xs:inline">AI Chat</span>
+          </button>
+        </div>
+
+        {/* Action Controls & Settings */}
         <div className="flex items-center justify-end space-x-2.5">
           {/* Mobil Ulashish Button */}
           <button
@@ -2115,17 +2183,17 @@ salom("Vigron Code");
             title="Ushbu kod va loyihani boshqa telefonda ochish"
           >
             <Smartphone className="w-3.5 h-3.5 text-cyan-400" />
-            <span>Mobil Ulashish</span>
+            <span className="hidden xl:inline">Mobil Ulashish</span>
           </button>
 
-          {/* Projects Switcher - Visible always on desktop, can trigger from here */}
+          {/* Projects Switcher */}
           <button
             onClick={() => setIsProjectModalOpen(true)}
-            className="hidden sm:flex items-center space-x-1.5 px-3.5 py-2 bg-white/5 hover:bg-white/10 border border-white/5 text-slate-200 hover:text-emerald-400 rounded-xl text-xs font-bold transition-all duration-200 active:scale-95"
+            className="flex items-center space-x-1.5 px-3.5 py-2 bg-white/5 hover:bg-white/10 border border-white/5 text-slate-200 hover:text-emerald-400 rounded-xl text-xs font-bold transition-all duration-200 active:scale-95"
             title="Loyiha andozasini o'zgartirish"
           >
             <Layers className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Loyihalar</span>
+            <span className="hidden xl:inline">Loyihalar</span>
           </button>
 
           {/* Cloud Server Deployer Button */}
@@ -2138,7 +2206,7 @@ salom("Vigron Code");
             title="Bulutli bepul serverga joylash"
           >
             <Cloud className="w-3.5 h-3.5 text-sky-400" />
-            <span>Bulutli Server</span>
+            <span className="hidden xl:inline">Bulutli Server</span>
           </button>
 
           {/* User auth badge */}
@@ -2207,6 +2275,15 @@ salom("Vigron Code");
             </div>
           )}
 
+          {/* Settings button */}
+          <button
+            onClick={() => setIsProfileModalOpen(true)}
+            className="p-2 bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white rounded-xl border border-white/5 transition"
+            title="Sozlamalar va Mavzu"
+          >
+            <Settings className="w-4 h-4" />
+          </button>
+
           {/* Main Action Trigger */}
           {activeTabPath && (
             <button
@@ -2215,7 +2292,7 @@ salom("Vigron Code");
               title="Kodni ishga tushirish"
             >
               <Play className="w-3.5 h-3.5 fill-current" />
-              <span className="hidden sm:inline">Ishga tushirish</span>
+              <span className="hidden sm:inline">Run</span>
             </button>
           )}
 
@@ -2223,7 +2300,7 @@ salom("Vigron Code");
             <button
               onClick={saveCurrentFile}
               disabled={isSaving}
-              className="p-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-300 hover:text-emerald-400 rounded-xl transition duration-150 border border-slate-700/60"
+              className="p-2 bg-slate-800 hover:bg-slate-750 border border-slate-700 text-slate-300 hover:text-emerald-400 rounded-xl transition duration-150"
               title="Saqlash (Ctrl+S)"
             >
               {isSaving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
@@ -2234,294 +2311,26 @@ salom("Vigron Code");
 
       {/* Main Workspace Frame */}
       <div className="flex-1 flex overflow-hidden relative">
-        
-        {/* VS Code Left Activity Bar - Sleek vertical bar on desktop */}
-        <div className="hidden md:flex w-12 bg-[#181818] border-r border-[#2d2d2d] flex-col justify-between items-center py-3 shrink-0 select-none z-40">
-          <div className="flex flex-col items-center space-y-4 w-full">
-            {/* Explorer (Files) Icon */}
-            <button
-              onClick={() => {
-                if (activeSidebarTab === "explorer" && sidebarOpen) {
-                  setSidebarOpen(false);
-                } else {
-                  setActiveSidebarTab("explorer");
-                  setSidebarOpen(true);
-                }
-              }}
-              className={`p-2 rounded-lg transition-colors relative group ${
-                sidebarOpen && activeSidebarTab === "explorer" 
-                  ? "text-sky-400 bg-[#2d2d2d]" 
-                  : "text-slate-400 hover:text-slate-200 hover:bg-[#2d2d2d]"
-              }`}
-              title="Fayl Explorer"
-            >
-              <FolderTree className="w-5 h-5" />
-              <div className="absolute left-14 bg-[#252526] border border-[#2d2d2d] text-slate-200 text-[10px] px-2 py-1 rounded shadow-lg opacity-0 group-hover:opacity-100 transition pointer-events-none whitespace-nowrap z-50">
-                Explorer
-              </div>
-            </button>
-
-            {/* Search Icon */}
-            <button
-              onClick={() => {
-                if (activeSidebarTab === "search" && sidebarOpen) {
-                  setSidebarOpen(false);
-                } else {
-                  setActiveSidebarTab("search");
-                  setSidebarOpen(true);
-                }
-              }}
-              className={`p-2 rounded-lg transition-colors relative group ${
-                sidebarOpen && activeSidebarTab === "search" 
-                  ? "text-sky-400 bg-[#2d2d2d]" 
-                  : "text-slate-400 hover:text-slate-200 hover:bg-[#2d2d2d]"
-              }`}
-              title="Fayllarni qidirish"
-            >
-              <Search className="w-5 h-5" />
-              <div className="absolute left-14 bg-[#252526] border border-[#2d2d2d] text-slate-200 text-[10px] px-2 py-1 rounded shadow-lg opacity-0 group-hover:opacity-100 transition pointer-events-none whitespace-nowrap z-50">
-                Qidiruv
-              </div>
-            </button>
-
-            {/* Projects Icon */}
-            <button
-              onClick={() => setIsProjectModalOpen(true)}
-              className="p-2 text-slate-400 hover:text-slate-200 hover:bg-[#2d2d2d] rounded-lg transition relative group"
-              title="Loyiha andozalari"
-            >
-              <Layers className="w-5 h-5" />
-              <div className="absolute left-14 bg-[#252526] border border-[#2d2d2d] text-slate-200 text-[10px] px-2 py-1 rounded shadow-lg opacity-0 group-hover:opacity-100 transition pointer-events-none whitespace-nowrap z-50">
-                Loyihalar
-              </div>
-            </button>
-
-            {/* AI Assistant Icon */}
-            <button
-              onClick={() => {
-                setActiveMobileTab("ai");
-                showStatus("Vigron Copilot AI yordamchisi faollashtirildi", "info");
-              }}
-              className={`p-2 rounded-lg transition relative group ${
-                activeMobileTab === "ai"
-                  ? "text-purple-400 bg-purple-950/40"
-                  : "text-slate-400 hover:text-slate-200 hover:bg-[#2d2d2d]"
-              }`}
-              title="Copilot AI Assistant"
-            >
-              <Sparkles className="w-5 h-5 text-purple-400 animate-pulse" />
-              <div className="absolute left-14 bg-[#252526] border border-[#2d2d2d] text-slate-200 text-[10px] px-2 py-1 rounded shadow-lg opacity-0 group-hover:opacity-100 transition pointer-events-none whitespace-nowrap z-50">
-                AI Copilot
-              </div>
-            </button>
-          </div>
-
-          <div className="flex flex-col items-center space-y-4 w-full">
-            {/* User Profile */}
-            <button
-              onClick={() => {
-                if (user) {
-                  setProfileNameInput(user.name);
-                  let style = "shapes";
-                  let seed = user.email.split("@")[0];
-                  if (user.avatar && user.avatar.startsWith("https://api.dicebear.com/7.x/")) {
-                    const match = user.avatar.match(/7\.x\/([^/]+)\/svg\?seed=([^&]+)/);
-                    if (match) {
-                      style = match[1];
-                      seed = decodeURIComponent(match[2]);
-                    }
-                  }
-                  setProfileAvatarStyle(style);
-                  setProfileAvatarSeed(seed);
-                }
-                setIsProfileModalOpen(true);
-              }}
-              className="p-2 text-slate-400 hover:text-slate-200 hover:bg-[#2d2d2d] rounded-lg transition"
-              title="Profil"
-            >
-              {user ? (
-                <img src={user.avatar} alt="Avatar" className="w-5 h-5 rounded-full bg-slate-800" />
-              ) : (
-                <User className="w-5 h-5" />
-              )}
-            </button>
-
-            {/* Settings */}
-            <button
-              onClick={() => setIsProfileModalOpen(true)}
-              className="p-2 text-slate-400 hover:text-slate-200 hover:bg-[#2d2d2d] rounded-lg transition"
-              title="Sozlamalar va Mavzu"
-            >
-              <Settings className="w-5 h-5" />
-            </button>
-          </div>
-        </div>
-
-        {/* Left Sidebar (VS Code inspired explorer/search sidebar) */}
-        <aside className={`
-          absolute md:static inset-y-0 left-0 z-40 w-64 bg-[#252526] border-r border-[#2d2d2d] flex flex-col shrink-0 transition-transform duration-300 md:translate-x-0
-          ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}
-        `}>
-          {/* Sidebar Section Header */}
-          <div className="p-3 border-b border-[#2d2d2d] bg-[#1e1e1e]/40 flex items-center justify-between select-none shrink-0">
-            {activeSidebarTab === "explorer" ? (
-              <>
-                <span className="text-[10px] font-extrabold uppercase tracking-widest text-slate-400 flex items-center">
-                  <FolderTree className="w-3.5 h-3.5 mr-1.5 text-sky-400" /> EXPLORER: {currentProject.toUpperCase()}
-                </span>
-                <div className="flex items-center space-x-1">
-                  <button
-                    onClick={() => triggerCreateModal("", "file")}
-                    className="p-1 hover:bg-[#2d2d2d] rounded text-slate-400 hover:text-sky-400 transition"
-                    title="Yangi fayl"
-                  >
-                    <Plus className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => triggerCreateModal("", "folder")}
-                    className="p-1 hover:bg-[#2d2d2d] rounded text-slate-400 hover:text-sky-400 transition"
-                    title="Yangi papka"
-                  >
-                    <FolderTree className="w-4 h-4" />
-                  </button>
-                </div>
-              </>
-            ) : (
-              <span className="text-[10px] font-extrabold uppercase tracking-widest text-slate-400 flex items-center">
-                <Search className="w-3.5 h-3.5 mr-1.5 text-sky-400" /> QIDIRUV (SEARCH)
-              </span>
-            )}
-          </div>
-
-          {/* Sidebar Body */}
-          <div className="flex-1 flex flex-col overflow-hidden min-h-0">
-            {activeSidebarTab === "explorer" ? (
-              <div className="flex-1 overflow-y-auto p-1.5 custom-scrollbar min-h-0">
-                {loadingFiles ? (
-                  <div className="flex flex-col items-center justify-center py-8 space-y-2">
-                    <RefreshCw className="w-6 h-6 text-sky-500 animate-spin" />
-                    <span className="text-xs text-slate-500">Yuklanmoqda...</span>
-                  </div>
-                ) : (
-                  <FileTree
-                    files={files}
-                    onOpenFile={(path) => {
-                      openFile(path);
-                      if (window.innerWidth < 768) setSidebarOpen(false); // Auto close sidebar on mobile
-                    }}
-                    onDeleteFile={handleDeleteTrigger}
-                    onCreateFile={createFile}
-                    activeFilePath={activeTabPath}
-                  />
-                )}
-              </div>
-            ) : (
-              <div className="flex-1 flex flex-col p-3 overflow-hidden space-y-3 bg-[#252526] min-h-0">
-                <div className="relative shrink-0">
-                  <input
-                    type="text"
-                    value={fileSearchQuery}
-                    onChange={(e) => setFileSearchQuery(e.target.value)}
-                    placeholder="Fayllarni qidirish..."
-                    className="w-full pl-8 pr-7 py-1.5 bg-[#1e1e1e] border border-[#3c3c3c] rounded text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-sky-500 font-mono"
-                  />
-                  <Search className="absolute left-2.5 top-2.5 w-3.5 h-3.5 text-slate-500" />
-                  {fileSearchQuery && (
-                    <button 
-                      onClick={() => setFileSearchQuery("")}
-                      className="absolute right-2.5 top-1.5 text-slate-400 hover:text-slate-200 text-sm font-bold"
-                    >
-                      ×
-                    </button>
-                  )}
-                </div>
-
-                <div className="flex-1 overflow-y-auto custom-scrollbar space-y-1 pr-1 min-h-0">
-                  <p className="text-[9px] text-slate-500 font-extrabold uppercase tracking-widest mb-2">
-                    {fileSearchQuery ? "MOS KELUVCHI FAYLLAR" : "LOYIHA FAYLLARI RO'YXATI"}
-                  </p>
-
-                  {(() => {
-                    const flat = getFlattenedFiles(files);
-                    const filtered = flat.filter(item => 
-                      !item.isFolder && 
-                      (!fileSearchQuery || item.name.toLowerCase().includes(fileSearchQuery.toLowerCase()) || item.path.toLowerCase().includes(fileSearchQuery.toLowerCase()))
-                    );
-
-                    if (filtered.length === 0) {
-                      return <p className="text-xs text-slate-500 italic p-2">Mos fayl topilmadi</p>;
-                    }
-
-                    return filtered.map((item) => (
-                      <button
-                        key={item.path}
-                        onClick={() => {
-                          openFile(item.path);
-                          if (window.innerWidth < 768) setSidebarOpen(false);
-                        }}
-                        className={`w-full flex items-center space-x-2 px-2 py-1.5 rounded text-left transition text-xs font-mono group ${
-                          activeTabPath === item.path 
-                            ? "bg-sky-950/30 text-sky-400 border-l border-sky-400" 
-                            : "text-slate-400 hover:text-slate-200 hover:bg-[#2d2d2d]"
-                        }`}
-                      >
-                        <LanguageLogo fileName={item.path} className="w-3.5 h-3.5 shrink-0" />
-                        <div className="flex flex-col min-w-0">
-                          <span className="truncate font-bold text-slate-300 group-hover:text-sky-400">{item.name}</span>
-                          <span className="text-[9px] text-slate-500 truncate">{item.path}</span>
-                        </div>
-                      </button>
-                    ));
-                  })()}
-                </div>
-              </div>
-            )}
-
-            {/* Guest Sync Guidance Alert */}
-            {user && user.email.startsWith("guest_") && (
-              <div className="mx-2 mb-2 p-2.5 bg-cyan-950/40 border border-cyan-800/40 rounded-xl space-y-1.5 shrink-0 select-none">
-                <div className="flex items-center space-x-1.5 text-cyan-400 font-bold text-[10px]">
-                  <Smartphone className="w-3.5 h-3.5 shrink-0 animate-pulse" />
-                  <span>Qurilmalarni ulash (Sync)</span>
-                </div>
-                <p className="text-[9px] text-slate-400 leading-normal">
-                  Boshqa telefonlarda loyiha fayllarini va ishingizni davom ettirish uchun <b>"Mobil Ulashish"</b> QR-kodidan foydalaning!
-                </p>
-                <button
-                  onClick={() => setIsShareModalOpen(true)}
-                  className="w-full py-1.5 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 font-extrabold text-[9px] rounded-lg border border-cyan-500/20 transition active:scale-95"
-                >
-                  Sinxronizatsiya havolasi (QR)
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* Sidebar Workspace Path Indicator */}
-          <div className="p-3 bg-[#1e1e1e]/80 border-t border-[#2d2d2d] text-[10px] text-slate-400 space-y-2 shrink-0 select-none">
-            <p className="flex items-center text-slate-400 font-semibold">
-              <Info className="w-3.5 h-3.5 mr-1 text-sky-400 shrink-0" /> Ish stoli: <span className="font-mono bg-[#181818] px-1.5 py-0.5 rounded ml-1 border border-[#2d2d2d] text-slate-300">workspace/</span>
-            </p>
-            <div className="grid grid-cols-2 gap-1.5 mt-1">
-              <button
-                onClick={() => setIsProjectModalOpen(true)}
-                className="flex items-center justify-center space-x-1 px-1.5 py-1.5 bg-[#181818] hover:bg-[#2d2d2d] border border-[#2d2d2d] hover:border-[#3c3c3c] text-slate-300 hover:text-sky-400 rounded text-[9px] font-extrabold transition active:scale-95"
-                title="Loyiha andozasini o'zgartirish"
-              >
-                <Layers className="w-3 h-3 text-sky-400 shrink-0" />
-                <span>LOYIHALAR</span>
-              </button>
-              <button
-                onClick={() => window.open(`${window.location.origin}/api/workspace/project/export`, "_blank")}
-                className="flex items-center justify-center space-x-1 px-1.5 py-1.5 bg-[#181818] hover:bg-[#2d2d2d] border border-[#2d2d2d] hover:border-[#3c3c3c] text-slate-300 hover:text-sky-400 rounded text-[9px] font-extrabold transition active:scale-95"
-                title="Butun loyihani ZIP shaklida yuklab olish"
-              >
-                <Download className="w-3 h-3 text-sky-400 shrink-0" />
-                <span>ZIP YUKLASH</span>
-              </button>
-            </div>
-          </div>
-        </aside>
+        <YonPanel 
+          sidebarOpen={sidebarOpen}
+          setSidebarOpen={setSidebarOpen}
+          activeSidebarTab={activeSidebarTab}
+          setActiveSidebarTab={setActiveSidebarTab}
+          loadingFiles={loadingFiles}
+          files={files}
+          openFile={openFile}
+          handleDeleteTrigger={handleDeleteTrigger}
+          createFile={createFile}
+          activeTabPath={activeTabPath}
+          triggerCreateModal={triggerCreateModal}
+          fileSearchQuery={fileSearchQuery}
+          setFileSearchQuery={setFileSearchQuery}
+          getFlattenedFiles={getFlattenedFiles}
+          user={user}
+          setIsShareModalOpen={setIsShareModalOpen}
+          setIsProjectModalOpen={setIsProjectModalOpen}
+          currentProject={currentProject}
+        />
 
         {/* Content Box (Editor, Terminal, AI, Preview) */}
         <main className="flex-1 flex flex-col min-w-0 bg-slate-950">
@@ -2599,59 +2408,10 @@ salom("Vigron Code");
           {/* Core Panel Screens */}
           <div className="flex-1 flex flex-col md:flex-row overflow-hidden p-3 gap-3">
 
-            {/* Mobile File Explorer View - Displayed when "fayllar" tab is selected on mobile */}
-            <div className={`
-              flex-1 flex flex-col overflow-hidden md:hidden
-              ${activeMobileTab === "files" ? "flex" : "hidden"}
-            `}>
-              <div className="flex-1 bg-slate-900 rounded-2xl border border-slate-800 flex flex-col overflow-hidden">
-                <div className="p-4 border-b border-slate-850 flex items-center justify-between bg-slate-900/60 shrink-0">
-                  <span className="text-xs font-extrabold uppercase tracking-wider text-slate-300 flex items-center">
-                    <FolderTree className="w-4 h-4 mr-2 text-emerald-400 animate-pulse" /> Loyiha Fayllari
-                  </span>
-                  <div className="flex items-center space-x-2">
-                    <button
-                      onClick={() => triggerCreateModal("", "file")}
-                      className="px-2 py-1 bg-slate-800 hover:bg-slate-750 text-emerald-400 rounded-xl border border-slate-700/50 flex items-center space-x-1 text-[10px] font-bold"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      <span>Fayl</span>
-                    </button>
-                    <button
-                      onClick={() => triggerCreateModal("", "folder")}
-                      className="px-2 py-1 bg-slate-800 hover:bg-slate-750 text-emerald-400 rounded-xl border border-slate-700/50 flex items-center space-x-1 text-[10px] font-bold"
-                    >
-                      <FolderTree className="w-3.5 h-3.5" />
-                      <span>Papka</span>
-                    </button>
-                  </div>
-                </div>
-                <div className="flex-1 overflow-y-auto p-3 custom-scrollbar bg-slate-950/40">
-                  {loadingFiles ? (
-                    <div className="flex flex-col items-center justify-center py-12 space-y-2">
-                      <RefreshCw className="w-8 h-8 text-emerald-500 animate-spin" />
-                      <span className="text-xs text-slate-500 font-medium">Fayllar yuklanmoqda...</span>
-                    </div>
-                  ) : (
-                    <FileTree
-                      files={files}
-                      onOpenFile={(path) => {
-                        openFile(path);
-                        setActiveMobileTab("editor"); // Auto switch to editor when user taps a file
-                      }}
-                      onDeleteFile={handleDeleteTrigger}
-                      onCreateFile={createFile}
-                      activeFilePath={activeTabPath}
-                    />
-                  )}
-                </div>
-              </div>
-            </div>
-            
             {/* Desktop split view: Left Editor, Right Side depending on state / tabs */}
             <div className={`
               flex-1 flex flex-col overflow-hidden min-w-0
-              ${activeMobileTab === "editor" ? "flex" : "hidden md:flex"}
+              ${activePanel === "none" ? "flex" : "hidden md:flex"}
             `}>
               
               {/* Specialized Mobile Tab Bar inside editor panel if needed */}
@@ -2695,7 +2455,18 @@ salom("Vigron Code");
                 {activeTabPath ? (
                   <div className="flex-1 flex flex-col overflow-hidden">
                     {/* Real-time Code Editor Input with line numbering */}
-                    <div className="flex-1 flex overflow-hidden font-mono p-0 bg-[#1e1e1e]">
+                    <div 
+                      className="flex-1 flex overflow-hidden font-mono p-0 relative"
+                      style={{
+                        backgroundImage: customBg ? `url(${customBg})` : 'linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%)',
+                        backgroundSize: 'cover',
+                        backgroundPosition: 'center'
+                      }}
+                    >
+                      {/* Semi-transparent overlay to keep text visible */}
+                      <div className="absolute inset-0 bg-white/80 backdrop-blur-[2px]"></div>
+
+
                       {/* Line Numbers column with Scroll Sync and Active line highlight */}
                       <div 
                         ref={lineNumbersRef}
@@ -2859,155 +2630,98 @@ salom("Vigron Code");
             </div>
 
             {/* Terminal Window */}
-            <div className={`
-              flex-1 md:max-w-xl flex flex-col overflow-hidden min-h-[300px] md:min-h-0
-              ${activeMobileTab === "terminal" ? "flex" : "hidden md:flex"}
-            `}>
-              <Terminal
-                history={terminalHistory}
-                onRunCommand={runTerminalCommand}
-                onClearHistory={clearTerminalHistory}
-                onKillProcesses={killTerminalProcesses}
-                currentDir={currentDir}
-                isExecuting={isExecuting}
-                currentProject={currentProject}
-                activeTabPath={activeTabPath}
-              />
-            </div>
-
-            {/* AI Assistant Chat Panel */}
-            <div className={`
-              flex-1 md:max-w-md flex flex-col overflow-hidden
-              ${activeMobileTab === "ai" ? "flex" : "hidden md:flex"}
-            `}>
-              <AIChat
-                messages={chatMessages}
-                onSendMessage={sendAIMessage}
-                isSending={isSendingAI}
-                activeFileName={activeTabPath ? activeTabPath.split("/").pop() : undefined}
-                onApplySuggestedCode={applySuggestedCode}
-              />
-            </div>
-
-            {/* Live Web Preview Window */}
-            <div className={`
-              flex-1 flex flex-col overflow-hidden bg-slate-900 border border-slate-800 rounded-2xl shadow-xl
-              ${activeMobileTab === "preview" ? "flex" : "hidden"}
-            `}>
-              <div className="flex items-center justify-between px-4 py-2.5 bg-slate-850 border-b border-slate-800 shrink-0">
-                <div className="flex items-center space-x-2">
-                  <Eye className="w-4 h-4 text-emerald-400" />
-                  <span className="font-bold text-xs md:text-sm text-slate-300">Jonli sahifa (Live Preview)</span>
-                </div>
-                <div className="flex items-center space-x-2">
+            {activePanel === "terminal" && (
+              <div className="flex-1 md:max-w-xl flex flex-col overflow-hidden min-h-[300px] md:min-h-0 bg-slate-900 rounded-2xl border border-slate-800">
+                <div className="px-4 py-2 bg-slate-850 border-b border-slate-800 flex items-center justify-between shrink-0">
+                  <span className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+                    <TerminalIcon className="w-3.5 h-3.5 text-sky-400" />
+                    Terminal
+                  </span>
                   <button
-                    onClick={refreshPreview}
-                    className="p-1 hover:bg-slate-800 rounded text-slate-400 hover:text-emerald-400 transition"
-                    title="Yangilash"
+                    onClick={() => setActivePanel("none")}
+                    className="text-[10px] text-slate-400 hover:text-white transition bg-slate-800 px-2 py-0.5 rounded"
                   >
-                    <RefreshCw className="w-3.5 h-3.5" />
+                    Yopish
                   </button>
                 </div>
+                <div className="flex-1 overflow-hidden">
+                  <Terminal
+                    history={terminalHistory}
+                    onRunCommand={runTerminalCommand}
+                    onClearHistory={clearTerminalHistory}
+                    onKillProcesses={killTerminalProcesses}
+                    currentDir={currentDir}
+                    isExecuting={isExecuting}
+                    currentProject={currentProject}
+                    activeTabPath={activeTabPath}
+                  />
+                </div>
               </div>
-              <div className="flex-1 bg-white relative">
-                <iframe
-                  key={previewKey}
-                  src={previewUrl}
-                  title="Web Live Preview"
-                  className="w-full h-full border-none"
-                />
+            )}
+
+            {/* AI Assistant Chat Panel */}
+            {activePanel === "ai" && (
+              <div className="flex-1 md:max-w-md flex flex-col overflow-hidden bg-slate-900 rounded-2xl border border-slate-800">
+                <div className="px-4 py-2 bg-slate-850 border-b border-slate-800 flex items-center justify-between shrink-0">
+                  <span className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+                    AI Chat Assistant
+                  </span>
+                  <button
+                    onClick={() => setActivePanel("none")}
+                    className="text-[10px] text-slate-400 hover:text-white transition bg-slate-800 px-2 py-0.5 rounded"
+                  >
+                    Yopish
+                  </button>
+                </div>
+                <div className="flex-1 overflow-hidden">
+                  <AIChat
+                    messages={chatMessages}
+                    onSendMessage={sendAIMessage}
+                    isSending={isSendingAI}
+                    activeFileName={activeTabPath ? activeTabPath.split("/").pop() : undefined}
+                    onApplySuggestedCode={applySuggestedCode}
+                  />
+                </div>
               </div>
-            </div>
+            )}
+
+            {/* Live Web Preview Window */}
+            {activePanel === "preview" && (
+              <div className="flex-1 flex flex-col overflow-hidden bg-slate-900 border border-slate-800 rounded-2xl shadow-xl">
+                <div className="flex items-center justify-between px-4 py-2.5 bg-slate-850 border-b border-slate-800 shrink-0">
+                  <div className="flex items-center space-x-2">
+                    <Eye className="w-4 h-4 text-teal-400" />
+                    <span className="font-bold text-xs md:text-sm text-slate-300">Jonli sahifa (Live Preview)</span>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <button
+                      onClick={refreshPreview}
+                      className="p-1 hover:bg-slate-800 rounded text-slate-400 hover:text-emerald-400 transition"
+                      title="Yangilash"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={() => setActivePanel("none")}
+                      className="text-[10px] text-slate-400 hover:text-white transition bg-slate-800 px-2 py-0.5 rounded"
+                    >
+                      Yopish
+                    </button>
+                  </div>
+                </div>
+                <div className="flex-1 bg-white relative">
+                  <iframe
+                    key={previewKey}
+                    src={previewUrl}
+                    title="Web Live Preview"
+                    className="w-full h-full border-none"
+                  />
+                </div>
+              </div>
+            )}
 
           </div>
-
-          {/* Bottom Dock Navigation for Mobile layout */}
-          <nav className="md:hidden flex items-center justify-around bg-[#181818] border-t border-[#2d2d2d] px-2 py-2 shrink-0 z-40 select-none">
-            <button
-              onClick={() => {
-                setActiveMobileTab("files");
-                setActiveSidebarTab("explorer");
-                setSidebarOpen(true);
-              }}
-              className={`flex flex-col items-center space-y-0.5 p-1 transition ${
-                activeMobileTab === "files" ? "text-sky-400" : "text-slate-500 hover:text-slate-300"
-              }`}
-            >
-              <FolderTree className="w-4 h-4" />
-              <span className="text-[9px] font-bold">Fayllar</span>
-            </button>
-
-            <button
-              onClick={() => {
-                setActiveMobileTab("files");
-                setActiveSidebarTab("search");
-                setSidebarOpen(true);
-              }}
-              className={`flex flex-col items-center space-y-0.5 p-1 transition ${
-                activeMobileTab === "files" && activeSidebarTab === "search" ? "text-sky-400" : "text-slate-500 hover:text-slate-300"
-              }`}
-            >
-              <Search className="w-4 h-4" />
-              <span className="text-[9px] font-bold">Qidiruv</span>
-            </button>
-
-            <button
-              onClick={() => {
-                setActiveMobileTab("editor");
-                setSidebarOpen(false);
-              }}
-              className={`flex flex-col items-center space-y-0.5 p-1 transition ${
-                activeMobileTab === "editor" ? "text-sky-400" : "text-slate-500 hover:text-slate-300"
-              }`}
-            >
-              <FileCode className="w-4 h-4" />
-              <span className="text-[9px] font-bold">Kod</span>
-            </button>
-
-            <button
-              onClick={() => {
-                setActiveMobileTab("terminal");
-                setSidebarOpen(false);
-              }}
-              className={`flex flex-col items-center space-y-0.5 p-1 transition relative ${
-                activeMobileTab === "terminal" ? "text-sky-400" : "text-slate-500 hover:text-slate-300"
-              }`}
-            >
-              <TerminalIcon className="w-4 h-4" />
-              <span className="text-[9px] font-bold">Terminal</span>
-              {isExecuting && (
-                <span className="absolute top-1 right-2 w-1.5 h-1.5 bg-sky-400 rounded-full animate-ping" />
-              )}
-            </button>
-
-            <button
-              onClick={() => {
-                setActiveMobileTab("preview");
-                setSidebarOpen(false);
-                refreshPreview();
-              }}
-              className={`flex flex-col items-center space-y-0.5 p-1 transition ${
-                activeMobileTab === "preview" ? "text-sky-400" : "text-slate-500 hover:text-slate-300"
-              }`}
-            >
-              <Eye className="w-4 h-4" />
-              <span className="text-[9px] font-bold">Preview</span>
-            </button>
-
-            <button
-              onClick={() => {
-                setActiveMobileTab("ai");
-                setSidebarOpen(false);
-              }}
-              className={`flex flex-col items-center space-y-0.5 p-1 transition relative ${
-                activeMobileTab === "ai" ? "text-purple-400 font-extrabold" : "text-slate-500 hover:text-slate-300"
-              }`}
-            >
-              <Sparkles className="w-4 h-4 text-purple-400 animate-pulse" />
-              <span className="text-[9px] font-bold">AI Copilot</span>
-            </button>
-          </nav>
-
         </main>
       </div>
 
@@ -4035,7 +3749,40 @@ salom("Vigron Code");
                     <span className="w-1.5 h-1.5 bg-sky-400 rounded-full"></span>
                     <span>Dasturlash Muharriri Mavzusi</span>
                   </h4>
+                  
+                  {/* Custom Background Uploader */}
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest block">Fon rasmi (Custom Background)</label>
+                    <input
+                      type="file"
+                      ref={fileInputRef}
+                      onChange={handleBgUpload}
+                      accept="image/*"
+                      className="hidden"
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => fileInputRef.current?.click()}
+                        className="flex-1 px-3 py-2 bg-[#18181c] hover:bg-[#252530] border border-[#2d2d3a] text-slate-200 rounded-xl text-[10px] font-bold transition"
+                      >
+                        Rasmni yuklash
+                      </button>
+                      {customBg && (
+                        <button
+                          onClick={() => {
+                            setCustomBg(null);
+                            localStorage.removeItem("vigron_custom_bg");
+                          }}
+                          className="px-3 py-2 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 rounded-xl text-[10px] font-bold transition"
+                        >
+                          O'chirish
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+
                     {[
                       { id: "vscode", label: "Studio Light", color: "bg-white border-slate-200", preview: "bg-indigo-600" },
                       { id: "slate", label: "Elegant Silk", color: "bg-slate-50 border-slate-200", preview: "bg-slate-400" },

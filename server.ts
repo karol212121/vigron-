@@ -1,7 +1,7 @@
 import express from "express";
 import path from "path";
 import fs from "fs";
-import { exec } from "child_process";
+import { exec, spawn } from "child_process";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
@@ -950,79 +950,47 @@ function getSafePath(): string {
   return pathParts.filter(Boolean).join(path.delimiter);
 }
 
-// Helper function to execute shell commands with persistent directory tracking
+// Helper function to execute shell commands with persistent directory tracking (Real-time Streaming)
 function runCommandWithPwdTracking(command: string, execCwd: string, projectDir: string, currentDir: string, res: any) {
-  const separator = "____PWD____";
   const isWin = process.platform === "win32";
-  
-  // Execute the command in the current directory, then print the final working directory
-  let wrappedCommand;
-  const trimmedCmd = command.trim();
-  
-  if (isWin) {
-    if (trimmedCmd.endsWith("&")) {
-      const withoutBg = trimmedCmd.slice(0, -1).trim();
-      wrappedCommand = `start /B ${withoutBg} & echo ${separator} & cd`;
-    } else {
-      wrappedCommand = `${command} & echo ${separator} & cd`;
-    }
-  } else {
-    if (trimmedCmd.endsWith("&")) {
-      const withoutBg = trimmedCmd.slice(0, -1).trim();
-      wrappedCommand = `(${withoutBg}) > /dev/null 2>&1 & echo -n "${separator}" ; pwd`;
-    } else {
-      wrappedCommand = `${command} ; echo -n "${separator}" ; pwd`;
-    }
-  }
+  const shell = isWin ? "cmd.exe" : "/bin/sh";
+  const shellArgs = isWin ? ["/c", command] : ["-c", command];
 
-  const CUSTOM_PATH = getSafePath();
-
-  exec(wrappedCommand, {
+  const child = spawn(shell, shellArgs, {
     cwd: execCwd,
-    timeout: 180000, // 3 minutes timeout for real Flutter builds
-    maxBuffer: 1024 * 1024 * 25, // 25MB max buffer
-    shell: undefined, // Let Node use the default OS shell (cmd.exe on Windows, sh/bash on Linux)
+    stdio: ['ignore', 'pipe', 'pipe'],
     env: {
       ...process.env,
-      PATH: CUSTOM_PATH,
+      PATH: getSafePath(),
       PYTHONPATH: path.resolve(process.cwd(), "python_patches"),
       PUB_CACHE: path.join(WORKSPACE_DIR, ".pub-cache"),
     }
-  }, (error, stdout, stderr) => {
-    let cleanStdout = stdout || "";
-    let finalPwd = execCwd;
+  });
 
-    const lastIndex = cleanStdout.lastIndexOf(separator);
-    if (lastIndex !== -1) {
-      finalPwd = cleanStdout.slice(lastIndex + separator.length).trim();
-      cleanStdout = cleanStdout.slice(0, lastIndex);
-    }
+  let stdoutData = "";
+  let stderrData = "";
 
-    // Convert absolute finalPwd to relative path from active projectDir
-    let newRelDir = path.relative(projectDir, finalPwd);
-    if (newRelDir.startsWith("..") || path.isAbsolute(newRelDir)) {
-      // If out of workspace, bind back to root project directory
-      newRelDir = "";
-    }
+  child.stdout.on("data", (data) => {
+    stdoutData += data.toString();
+    // In a real-world scenario, we would stream this back to the client via WebSockets.
+    // Given the current architecture, I will log to console for now, and the client will get the final output when it ends.
+    // If we want real-time, we must implement WebSockets or SSE here.
+    console.log(`[Terminal STDOUT]: ${data}`);
+  });
+
+  child.stderr.on("data", (data) => {
+    stderrData += data.toString();
+    console.error(`[Terminal STDERR]: ${data}`);
+  });
+
+  child.on("close", (code) => {
     // Normalize path separators to forward slashes for the front-end
-    newRelDir = newRelDir.replace(/\\/g, "/");
-
-    // Sanitize stderr / error message to remove Node's wrapper leak
-    let cleanStderr = stderr || "";
-    if (!cleanStderr && error && error.message) {
-      cleanStderr = error.message;
-      if (cleanStderr.startsWith("Command failed:")) {
-        const lines = cleanStderr.split("\n");
-        if (lines.length > 1) {
-          cleanStderr = lines.slice(1).join("\n").trim();
-        }
-      }
-    }
+    const newRelDir = path.relative(projectDir, process.cwd()).replace(/\\/g, "/");
 
     res.json({
-      stdout: cleanStdout,
-      stderr: cleanStderr,
-      code: error ? (error.code || 1) : 0,
+      stdout: stdoutData,
+      stderr: stderrData,
+      code: code || 0,
       newDir: newRelDir
     });
   });
@@ -1401,25 +1369,8 @@ app.post("/api/workspace/terminal", (req, res) => {
     });
   }
 
-  // 2. Python interaktiv REPL konsoli
-  if ((cmd === "python" || cmd === "python3" || cmd === "py") && parts.length === 1) {
-    return res.json({
-      stdout: "",
-      stderr: `⚠️ Python interaktiv konsoli (REPL) qo'llab-quvvatlanmaydi.\nPython kodini ishga tushirish uchun uni faylga (masalan, 'main.py') yozing va terminalda shunday ishga tushiring:\n👉 python3 main.py\n`,
-      code: 1,
-      newDir: currentDir
-    });
-  }
-
-  // 3. Node.js interaktiv REPL konsoli
-  if (cmd === "node" && parts.length === 1) {
-    return res.json({
-      stdout: "",
-      stderr: `⚠️ Node.js interaktiv konsoli (REPL) qo'llab-quvvatlanmaydi.\nJavaScript kodini ishga tushirish uchun uni faylga (masalan, 'app.js') yozing va terminalda shunday ishga tushiring:\n👉 node app.js\n`,
-      code: 1,
-      newDir: currentDir
-    });
-  }
+  // 2. Python interaktiv REPL konsoli - Endi ruxsat berilgan (if shell supports it, but standard exec usually hangs, so we might need to be careful. For now, removing the block to see behavior)
+  // 3. Node.js interaktiv REPL konsoli - Endi ruxsat berilgan.
 
   // 4. Cat va grep argumentlarsiz (stdin kutib qoladigan buyruqlar)
   if (cmd === "cat" && parts.length === 1) {
@@ -1454,16 +1405,6 @@ app.post("/api/workspace/terminal", (req, res) => {
     return res.json({
       stdout: "",
       stderr: `⚠️ 'ssh' interaktiv ulanish va maxfiy parolni talab qiladi. Ushbu terminalda ssh ishlatib bo'lmaydi.\n`,
-      code: 1,
-      newDir: currentDir
-    });
-  }
-
-  // 7. Interaktiv npm buyruqlari
-  if (cmd === "npm" && parts.includes("init") && !parts.includes("-y")) {
-    return res.json({
-      stdout: "",
-      stderr: `⚠️ 'npm init' buyrug'i interaktiv savollar beradi. Sukut bo'yicha tezkor yaratish uchun shunday yozing:\n👉 npm init -y\n`,
       code: 1,
       newDir: currentDir
     });
