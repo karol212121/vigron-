@@ -1,0 +1,11 @@
+﻿{
+  "type": "web",
+  "name": "vigron-server",
+  "env": "node",
+  "plan": "free",
+  "repo": "https://github.com/karol212121/vigron-.git",
+  "branch": "main",
+  "buildCommand": "npm install && npm run build",
+  "startCommand": "npm start",
+  "autoDeploy": true
+}
