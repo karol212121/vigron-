@@ -43,7 +43,7 @@ import { FileTree } from "./components/FileTree";
 import { Terminal } from "./components/Terminal";
 import { AIChat } from "./components/AIChat";
 import { LanguageLogo } from "./components/LanguageLogo";
-import YonPanel from "./komponentlar/YonPanel";
+import YonPanel from "./components/komponentlar/YonPanel";
 import { getSuggestions, AutocompleteSuggestion } from "./lib/autocomplete";
 import { highlightCode } from "./lib/highlighter";
 import { db } from "./lib/firebase";

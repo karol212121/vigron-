@@ -1,7 +1,7 @@
 import React from 'react';
 import { FolderTree, Search, Plus, RefreshCw, Smartphone, Info, Layers, Download } from 'lucide-react';
-import { FileTree } from '../components/FileTree';
-import { LanguageLogo } from '../components/LanguageLogo';
+import { FileTree } from "../FileTree";
+import { LanguageLogo } from "../LanguageLogo";
 
 interface YonPanelProps {
   sidebarOpen: boolean;
